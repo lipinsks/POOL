@@ -1,0 +1,2134 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billiard Position Trainer & Inverse Physics Solver</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        felt: {
+                            DEFAULT: '#146c43',
+                            dark: '#0d4a2d',
+                            tournament: '#1b7593'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0b0f17;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+            margin-top: -5px;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #1f2937;
+            border-radius: 3px;
+        }
+        .canvas-shadow {
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.07);
+        }
+        .glow-emerald {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Navigation / Header -->
+    <header class="border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-900/40 border border-emerald-400/30">
+                    <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="4"/>
+                        <line x1="21.17" y1="8" x2="12" y2="8"/>
+                        <line x1="3.95" y1="6.06" x2="8.54" y2="14"/>
+                        <line x1="10.88" y1="21.94" x2="15.46" y2="14"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-lg tracking-tight text-white">CueMaster <span class="text-emerald-400 font-mono text-sm uppercase px-1.5 py-0.5 bg-emerald-950/80 border border-emerald-700/50 rounded">PRO Physics</span></h1>
+                    </div>
+                    <p class="text-xs text-slate-400">Trener Pozycjonowania Białej Bili & Inverse Physics Solver (Stół 9ft 254×127cm)</p>
+                </div>
+            </div>
+
+            <!-- Presety treningowe -->
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-medium text-slate-400 uppercase tracking-wider mr-1">Scenariusze:</span>
+                <button onclick="loadPreset('oneRail')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 1. Klasyczne 1 banda
+                </button>
+                <button onclick="loadPreset('drawAngle')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-amber-400"></span> 2. Wsteczna (Draw) pod kątem
+                </button>
+                <button onclick="loadPreset('twoRailsSpin')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400"></span> 3. Wyjście po 2 bandach z rotacją
+                </button>
+                <button onclick="loadPreset('obstacleAvoid')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-rose-400"></span> 4. Ominięcie przeszkody
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="max-w-[1600px] w-full mx-auto px-4 py-5 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+
+        <!-- LEWA KOLUMNA: Stół Bilardowy + Narzędzia Stołu + Warianty (8 kolumn na XL) -->
+        <div class="xl:col-span-8 flex flex-col gap-4">
+
+            <!-- Pasek narzędzi stołu i instrukcji interakcji -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 px-1">Tryb kliknięcia / przeciągania:</span>
+                    
+                    <button id="mode-drag" onclick="setInteractionMode('drag')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow flex items-center gap-1.5 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+                        Swobodne Przeciąganie
+                    </button>
+                    <button id="mode-cue" onclick="setInteractionMode('cue')" class="mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+                        <span class="w-3 h-3 rounded-full bg-white inline-block border border-slate-400"></span> Biała Bila
+                    </button>
+                    <button id="mode-object" onclick="setInteractionMode('object')" class="mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+                        <span class="w-3 h-3 rounded-full bg-amber-400 inline-block border border-amber-600"></span> Bila Celowa (9)
+                    </button>
+                    <button id="mode-target" onclick="setInteractionMode('target')" class="mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+                        <span class="w-3 h-3 rounded-full border-2 border-cyan-400 inline-block"></span> Pozycja Docelowa
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button onclick="addBlockerBall()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1" title="Dodaj bilę przeszkadzającą na stole">
+                        <span class="text-emerald-400 font-bold">+</span> Bila przeszkoda
+                    </button>
+                    <button onclick="clearBlockers()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800 text-slate-400 border border-slate-700 transition" title="Usuń bile przeszkadzające">
+                        Usuń przeszkody
+                    </button>
+                    <button onclick="toggleClothColor()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Zmień kolor sukna (Turniejowy Niebieski / Klasyczny Zielony)">
+                        Sukno
+                    </button>
+                </div>
+            </div>
+
+            <!-- Kontener Canvas ze stołem bilardowym -->
+            <div class="relative w-full flex flex-col items-center justify-center bg-slate-950/90 rounded-2xl p-2 sm:p-4 border border-slate-800/90 canvas-shadow">
+                <div id="canvas-wrapper" class="w-full relative flex items-center justify-center">
+                    <canvas id="poolTableCanvas" class="w-full h-auto rounded-xl cursor-grab active:cursor-grabbing block"></canvas>
+                </div>
+
+                <!-- Pasek statusu pod stołem -->
+                <div class="w-full mt-3 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 px-2">
+                    <div class="flex items-center gap-4 flex-wrap">
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                            <strong class="text-slate-200">Interakcja:</strong> Przeciągnij dowolną bilę, celownik lub kliknij w jedną z <strong class="text-amber-400">6 łuz</strong>
+                        </span>
+                        <span id="cut-angle-info" class="font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                            Kąt cięcia: 24.5°
+                        </span>
+                    </div>
+                    <div id="shot-feasibility-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-700/60">
+                        Wbicie bezpośrednie dostępne
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wybór Wariantów Ścieżek (Inverse Solver Alternatives) -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                            Znalezione Warianty Wyjścia na Pozycję (Inverse Physics Solver)
+                        </h2>
+                        <p class="text-xs text-slate-400">Algorytm bada tysiące kombinacji siły oraz rotacji 3D, kategoryzując ścieżki według liczby odbić od band.</p>
+                    </div>
+                    <button onclick="runInverseSolver()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        Przelicz ponownie
+                    </button>
+                </div>
+
+                <!-- Karty wariantów -->
+                <div id="variants-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <!-- Wypełniane dynamicznie przez JS -->
+                </div>
+            </div>
+
+            <!-- Fizyczne Wyjaśnienie Uderzenia (Ekspert AI / Fizyka) -->
+            <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                <div class="space-y-1">
+                    <div class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                        <span>Analiza Fizyczna Trajektorii (Faza Poślizgu → Faza Toczenia)</span>
+                    </div>
+                    <p id="physics-explanation" class="text-xs text-slate-300 leading-relaxed">
+                        Po zderzeniu biała bila początkowo porusza się wzdłuż naturalnej linii stycznej 90° (tzw. Stun Tangent Line). Zastosowana rotacja wywołuje tarcie kinetyczne o sukno, zakrzywiając tor ruchu po łuku paraboloidy aż do momentu zrównania prędkości liniowej z obrotową.
+                    </p>
+                </div>
+                <div class="shrink-0 flex flex-col items-end font-mono text-xs bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+                    <span class="text-slate-400">Błąd pozycji (od celu):</span>
+                    <span id="error-distance-readout" class="text-base font-bold text-emerald-400">1.2 cm</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PRAWA KOLUMNA: Panel Sterowania, Punkt Uderzenia (Tip), Siła i Animacja (4 kolumny na XL) -->
+        <div class="xl:col-span-4 flex flex-col gap-5">
+
+            <!-- Karta 1: Punkt uderzenia na białej bili (Cue Ball Tip Selector) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white">Punkt Uderzenia (Rotacja / English)</h2>
+                        <p class="text-xs text-slate-400">Widok białej bili od strony kija (możesz też przeciągać kropkę ręcznie)</p>
+                    </div>
+                    <span id="mode-indicator-badge" class="px-2 py-0.5 text-[11px] font-mono uppercase rounded bg-emerald-950 text-emerald-400 border border-emerald-700/50">
+                        AUTO SOLVER
+                    </span>
+                </div>
+
+                <!-- Duża wizualizacja Białej Bili -->
+                <div class="flex flex-col sm:flex-row xl:flex-col items-center gap-5">
+                    <div class="relative flex items-center justify-center">
+                        <canvas id="cueBallSelectorCanvas" width="220" height="220" class="cursor-crosshair rounded-full shadow-2xl"></canvas>
+                        <!-- Etykiety kierunków wokół bili -->
+                        <span class="absolute -top-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-900 px-1.5 rounded">Follow (Góra)</span>
+                        <span class="absolute -bottom-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-900 px-1.5 rounded">Draw (Dół)</span>
+                        <span class="absolute -left-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-900 px-1 rounded -rotate-90">Lewo</span>
+                        <span class="absolute -right-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-900 px-1 rounded rotate-90">Prawo</span>
+                    </div>
+
+                    <!-- Odczyty liczbowe i słowne punktu uderzenia -->
+                    <div class="w-full space-y-3 bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/80">
+                        <div class="flex justify-between items-center border-b border-slate-800/80 pb-2">
+                            <span class="text-xs text-slate-400">Współrzędne Tipa (X, Y):</span>
+                            <span id="tip-coords-text" class="font-mono text-xs font-semibold text-white">X: +0.20R | Y: +0.45R</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-800/80 pb-2">
+                            <span class="text-xs text-slate-400">Rotacja pionowa:</span>
+                            <span id="tip-vertical-desc" class="text-xs font-semibold text-emerald-400">Górna (Topspin) 45%</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-800/80 pb-2">
+                            <span class="text-xs text-slate-400">Rotacja boczna (English):</span>
+                            <span id="tip-horizontal-desc" class="text-xs font-semibold text-cyan-400">Prawa rotacja 20%</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-slate-400">Odstęp od środka (Offset):</span>
+                            <span id="tip-offset-tips" class="font-mono text-xs text-amber-300">1.1 kapki (Tipa)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Karta 2: Siła Uderzenia (Power 1 - 100) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-bold text-white">Siła Uderzenia (Skala 1–100)</h2>
+                        <p class="text-xs text-slate-400">Naturalna skala prędkości początkowej kija ($v_0$)</p>
+                    </div>
+                    <div class="text-right">
+                        <span id="power-value-big" class="text-2xl font-extrabold font-mono text-emerald-400">48</span>
+                        <span class="text-xs text-slate-500 font-mono">/100</span>
+                    </div>
+                </div>
+
+                <!-- Wizualny pasek gradientowy siły -->
+                <div class="space-y-2">
+                    <div class="w-full h-4 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800 relative">
+                        <div id="power-bar-fill" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-rose-500 transition-all duration-150" style="width: 48%;"></div>
+                    </div>
+                    <!-- Suwak do ręcznej korekty siły -->
+                    <input id="power-slider" type="range" min="1" max="100" step="1" value="48" class="w-full">
+                    <div class="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
+                        <span>1 (Delikatne)</span>
+                        <span>25 (Lekkie)</span>
+                        <span>50 (Średnie)</span>
+                        <span>75 (Mocne)</span>
+                        <span>100 (Break)</span>
+                    </div>
+                </div>
+
+                <!-- Opis słowny i prędkość fizyczna -->
+                <div class="bg-slate-950/90 rounded-xl p-3 border border-slate-800/80 flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] text-slate-400 block">Charakterystyka tempa:</span>
+                        <span id="power-word-desc" class="text-sm font-bold text-amber-300">Średnie kontrolowane uderzenie</span>
+                    </div>
+                    <div class="text-right font-mono">
+                        <span class="text-[11px] text-slate-400 block">Prędkość $v_0$:</span>
+                        <span id="power-ms-readout" class="text-xs font-semibold text-slate-200">2.15 m/s</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Karta 3: Akcje Symulacji i Sterowanie -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                <button id="btn-simulate" onclick="startRealtimeAnimation()" class="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-lg shadow-emerald-950/50 transition flex items-center justify-center gap-2 glow-emerald">
+                    <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <span id="btn-simulate-text">Symuluj uderzenie (Animacja na żywo)</span>
+                </button>
+
+                <div class="grid grid-cols-2 gap-2.5 pt-1">
+                    <button onclick="resetAfterAnimation()" class="py-2 px-3 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                        Przywróć układ bil
+                    </button>
+                    <button onclick="applySolvedToTable()" class="py-2 px-3 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Optymalny Tip (Auto)
+                    </button>
+                </div>
+
+                <!-- Legenda wektorów na stole -->
+                <div class="pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                    <div class="flex items-center gap-2">
+                        <span class="w-4 h-0.5 bg-white/60 border-b border-dashed border-white inline-block"></span>
+                        <span>Linia celowania i Ghost Ball</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-4 h-1 bg-amber-400 rounded inline-block"></span>
+                        <span>Tor bili obiektowej do łuzy</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-4 h-1 bg-cyan-400 rounded inline-block"></span>
+                        <span>Faza poślizgu (krzywa parabol.)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-4 h-1 bg-emerald-400 rounded inline-block"></span>
+                        <span>Faza czystego toczenia</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Stopka informacyjna -->
+    <footer class="border-t border-slate-900 bg-slate-950/60 py-3 px-4 text-center text-xs text-slate-500">
+        Silnik fizyczny: Równania ruchu Marlow/Alciatore 3D (Masa bili $m=170\text{g}$, Promień $R=28.575\text{mm}$, $\mu_{\text{slide}}=0.20$, $\mu_{\text{roll}}=0.016$, $e_{\text{rail}}=0.78$).
+    </footer>
+
+    <!-- GŁÓWNY SKRYPT APLIKACJI I SILNIKA FIZYCZNEGO -->
+    <script>
+        /***********************************************************************
+         * 1. STAŁE FIZYCZNE I WYMIARY STOŁU 9-STOPOWEGO (W METRACH)
+         ***********************************************************************/
+        const PHYSICS = {
+            TABLE_W: 2.54,           // Długość pola gry stołu 9ft: 254 cm (100 cali)
+            TABLE_H: 1.27,           // Szerokość pola gry stołu 9ft: 127 cm (50 cali)
+            BALL_R: 0.028575,        // Promień bili: 28.575 mm (średnica 57.15 mm)
+            G: 9.81,                 // Przyspieszenie ziemskie (m/s^2)
+            MU_SLIDE: 0.20,          // Współczynnik tarcia kinetycznego (poślizg na suknie)
+            MU_ROLL: 0.0165,         // Współczynnik oporu toczenia na suknie
+            MU_SPIN_DECAY: 0.022,    // Zanik rotacji bocznej wokół osi Z (rad/s^2 skalar)
+            RAIL_RESTITUTION: 0.76,  // Współczynnik restytucji bandy (odbicie normalne)
+            RAIL_SPIN_FACTOR: 0.28,  // Wpływ rotacji bocznej (English) na wektor styczny bandy
+            BALL_FRICTION: 0.055,    // Współczynnik tarcia bila-bila (throw effect)
+            POCKET_RADIUS: 0.068     // Promień akceptacji łuzy
+        };
+
+        // Definicja 6 łuz na stole (w metrach od lewego górnego rogu pola gry)
+        // Punkt celowania w łuzie (mouth target) jest lekko przesunięty do wnętrza, aby zapewnić czyste wbicie
+        const POCKETS = [
+            { id: 0, name: "Lewa Górna",   x: 0.0,               y: 0.0,               aimX: 0.022,                  aimY: 0.022 },
+            { id: 1, name: "Środkowa Górna", x: PHYSICS.TABLE_W/2, y: -0.012,            aimX: PHYSICS.TABLE_W/2,      aimY: 0.012 },
+            { id: 2, name: "Prawa Górna",  x: PHYSICS.TABLE_W,   y: 0.0,               aimX: PHYSICS.TABLE_W - 0.022, aimY: 0.022 },
+            { id: 3, name: "Lewa Dolna",   x: 0.0,               y: PHYSICS.TABLE_H,   aimX: 0.022,                  aimY: PHYSICS.TABLE_H - 0.022 },
+            { id: 4, name: "Środkowa Dolna", x: PHYSICS.TABLE_W/2, y: PHYSICS.TABLE_H+0.012, aimX: PHYSICS.TABLE_W/2,  aimY: PHYSICS.TABLE_H - 0.012 },
+            { id: 5, name: "Prawa Dolna",  x: PHYSICS.TABLE_W,   y: PHYSICS.TABLE_H,   aimX: PHYSICS.TABLE_W - 0.022, aimY: PHYSICS.TABLE_H - 0.022 }
+        ];
+
+        /***********************************************************************
+         * 2. STAN APLIKACJI
+         ***********************************************************************/
+        const state = {
+            cueBall: { x: 0.62, y: 0.85 },
+            objectBall: { x: 1.75, y: 0.42, number: 9 },
+            targetPos: { x: 1.85, y: 0.92 },
+            blockers: [], // Dodatkowe bile przeszkadzające [{x, y, number, color}]
+            selectedPocketId: 2, // Domyślnie Prawa Górna łuza
+
+            // Aktualnie wybrane parametry uderzenia
+            shotParams: {
+                power: 48,   // Skala 1 - 100
+                tipX: 0.15,  // -1.0 (lewo) do +1.0 (prawo) w ułamku max bezpiecznego offsetu
+                tipY: 0.45   // -1.0 (dół/draw) do +1.0 (góra/follow)
+            },
+
+            // Wyniki z Inverse Solvera (kilka wariantów ścieżek)
+            solvedVariants: [],
+            activeVariantIndex: 0,
+            currentSimulatedResult: null,
+            manualOverride: false,
+
+            // Interakcja UI
+            interactionMode: 'drag', // 'drag', 'cue', 'object', 'target'
+            draggingEntity: null,    // 'cue', 'object', 'target', 'blocker-0', etc.
+            clothTournamentBlue: false,
+
+            // Animacja w czasie rzeczywistym
+            animating: false,
+            animStartTime: 0,
+            savedPositionsBeforeAnim: null
+        };
+
+        // Referencje Canvas
+        const tableCanvas = document.getElementById('poolTableCanvas');
+        const ctx = tableCanvas.getContext('2d');
+        const tipCanvas = document.getElementById('cueBallSelectorCanvas');
+        const tipCtx = tipCanvas.getContext('2d');
+
+        // Marginesy ramy stołu w pikselach (dynamicznie skalowane)
+        let renderMetrics = {
+            scale: 400, // px na metr
+            padX: 55,   // Szerokość drewnianej bandy w px
+            padY: 55
+        };
+
+        /***********************************************************************
+         * 3. KONWERSJE SKALI SIŁY (1-100) NA PRĘDKOŚĆ FIZYCZNĄ (m/s)
+         ***********************************************************************/
+        function powerToVelocity(power) {
+            // Naturalna skala bilardowa:
+            // Power 1 -> 0.35 m/s (bardzo wolne dotoczenie)
+            // Power 50 -> 2.30 m/s (solidne uderzenie pozycyjne)
+            // Power 100 -> 5.20 m/s (bardzo mocne uderzenie / rozbicie)
+            const norm = Math.max(1, Math.min(100, power)) / 100;
+            return 0.30 + 4.90 * Math.pow(norm, 1.28);
+        }
+
+        function getPowerDescription(power) {
+            if (power <= 15) return "Bardzo delikatne (Dotoczenie / Touch)";
+            if (power <= 32) return "Lekkie uderzenie (Soft Control)";
+            if (power <= 55) return "Średnie kontrolowane tempo (Medium)";
+            if (power <= 78) return "Mocne uderzenie (Firm / Power Stroke)";
+            return "Bardzo mocne uderzenie (Max / Force)";
+        }
+
+        /***********************************************************************
+         * 4. SILNIK FIZYCZNY 3D (SYMULACJA TRAJEKTORII BIAŁEJ I OBIEKTOWEJ BILI)
+         ***********************************************************************/
+
+        /**
+         * Oblicza pozycję Ghost Ball (bili-ducha) oraz sprawdza geometrię wbicia
+         * Zwraca obiekt z pozycją Ghost Ball, kątem cięcia (cutAngle) i informacją czy cięcie jest możliwe (< 84 stopni)
+         */
+        function computeGhostBallGeometry(cuePos, objPos, pocketId) {
+            const pocket = POCKETS[pocketId];
+            // Wektor od bili obiektowej do środka wlotu łuzy
+            const dxObjPocket = pocket.aimX - objPos.x;
+            const dyObjPocket = pocket.aimY - objPos.y;
+            const distToPocket = Math.hypot(dxObjPocket, dyObjPocket);
+
+            // Wektor jednostkowy kierunku wbicia bili obiektowej (n_impact)
+            const nx = dxObjPocket / (distToPocket || 1e-6);
+            const ny = dyObjPocket / (distToPocket || 1e-6);
+
+            // Pozycja Ghost Ball jest dokładnie o 2 promienie bili przed bilą obiektową w linii łuzy
+            const ghostX = objPos.x - nx * (2 * PHYSICS.BALL_R);
+            const ghostY = objPos.y - ny * (2 * PHYSICS.BALL_R);
+
+            // Wektor celowania od białej bili do Ghost Ball
+            const dxAim = ghostX - cuePos.x;
+            const dyAim = ghostY - cuePos.y;
+            const distAim = Math.hypot(dxAim, dyAim);
+
+            const ux = dxAim / (distAim || 1e-6);
+            const uy = dyAim / (distAim || 1e-6);
+
+            // Iloczyn skalarny kierunku celowania (u) i linii wbicia (n)
+            // cos(cutAngle) = u . n
+            const cosCut = ux * nx + uy * ny;
+            const cutAngleRad = Math.acos(Math.max(-1, Math.min(1, cosCut)));
+            const cutAngleDeg = cutAngleRad * (180 / Math.PI);
+
+            // Sprawdzenie, czy bila obiektowa nie zasłania bezpośredniej drogi do Ghost Ball (kąt < 83 st.)
+            // oraz czy Ghost Ball mieści się na stole
+            const R = PHYSICS.BALL_R;
+            const ghostOnTable = (ghostX >= R * 0.9 && ghostX <= PHYSICS.TABLE_W - R * 0.9 &&
+                                  ghostY >= R * 0.9 && ghostY <= PHYSICS.TABLE_H - R * 0.9);
+
+            const isPossible = (cosCut > 0.11) && ghostOnTable && (distAim > 2 * R);
+
+            return {
+                ghostX,
+                ghostY,
+                nx, ny,         // Wektor linii wbicia (normalny w chwili zderzenia)
+                ux, uy,         // Wektor ruchu białej bili przed zderzeniem
+                distAim,
+                distToPocket,
+                cosCut,
+                sinCut: Math.sin(cutAngleRad),
+                cutAngleRad,
+                cutAngleDeg,
+                isPossible,
+                pocket
+            };
+        }
+
+        /**
+         * Główny symulator fizyki pojedynczego uderzenia.
+         * Przyjmuje { power (1-100), tipX (-1..1), tipY (-1..1) } oraz geometrię wbicia.
+         * Zwraca pełną ścieżkę białej bili (z podziałem na fazę poślizgu i toczenia),
+         * ścieżkę bili obiektowej, liczbę odbić od band oraz informację o faulach/kolizjach.
+         */
+        function simulateShotPhysics(power, tipX, tipY, geom, recordFullPath = true) {
+            const R = PHYSICS.BALL_R;
+            const g = PHYSICS.G;
+            const v0 = powerToVelocity(power);
+
+            // Maksymalny fizyczny offset kapki kija na bili bez kiksu (miscue limit ~ 0.72 R)
+            const maxOffsetRatio = 0.72;
+            const normTipMag = Math.hypot(tipX, tipY);
+            let effTipX = tipX;
+            let effTipY = tipY;
+            if (normTipMag > 1.0) {
+                effTipX /= normTipMag;
+                effTipY /= normTipMag;
+            }
+
+            // Rzeczywisty offset w metrach (a - poziom, b - pion)
+            const a = effTipX * maxOffsetRatio * R;
+            const b = effTipY * maxOffsetRatio * R;
+
+            // Prędkość kątowa nadana przez kij w momencie uderzenia (z zasady zachowania krętu kuli pełnej I = 2/5 m R^2):
+            // omega = (5/2) * (v0 * offset) / R^2
+            // W układzie lokalnym białej bili poruszającej się wzdłuż wektora (ux, uy):
+            // w_topspin (dodatni dla góry/follow, ujemny dla dołu/draw)
+            let w_forward = (2.5 * v0 * b) / (R * R);
+            // w_z (rotacja boczna English wokół osi pionowej Z):
+            // Dodatni tipX (prawy english) -> obrót przeciwny do wskazówek zegara patrząc z góry
+            let wz = (2.5 * v0 * a) / (R * R);
+
+            // 1. Ewolucja białej bili w drodze OD punktu startowego DO Ghost Ball (zanim uderzy w bilę obiektową!)
+            // Na długich dystansach i przy słabej sile wsteczna rotacja (draw) zdąży wygasnąć w naturalne toczenie (follow).
+            let v_pre = v0;
+            let t_travel = 0;
+            const dt_pre = 0.004;
+            let distRemaining = geom.distAim;
+            let preCollisionFoul = false;
+
+            // Sprawdzamy, czy po drodze do Ghost Ball biała nie zahacza o żadną bilę przeszkodę
+            for (let bIdx = 0; bIdx < state.blockers.length; bIdx++) {
+                const blk = state.blockers[bIdx];
+                // Odległość punktu od odcinka (Cue -> Ghost)
+                const dSeg = distPointToSegment(blk.x, blk.y, state.cueBall.x, state.cueBall.y, geom.ghostX, geom.ghostY);
+                if (dSeg < 2.02 * R) {
+                    preCollisionFoul = true;
+                    break;
+                }
+            }
+            // Sprawdzenie, czy bila obiektowa w drodze do łuzy nie trafia w przeszkodę
+            for (let bIdx = 0; bIdx < state.blockers.length; bIdx++) {
+                const blk = state.blockers[bIdx];
+                const dSeg = distPointToSegment(blk.x, blk.y, state.objectBall.x, state.objectBall.y, geom.pocket.aimX, geom.pocket.aimY);
+                if (dSeg < 1.98 * R) {
+                    preCollisionFoul = true;
+                    break;
+                }
+            }
+
+            while (distRemaining > 0 && v_pre > 0.05) {
+                const stepDist = Math.min(distRemaining, v_pre * dt_pre);
+                const stepDt = stepDist / v_pre;
+
+                // Prędkość poślizgu w punkcie styku z suknem wzdłuż linii strzału:
+                // u_slip = v_pre - R * w_forward
+                const u_slip = v_pre - R * w_forward;
+
+                if (Math.abs(u_slip) > 0.02) {
+                    // Faza poślizgu (sliding) przed zderzeniem
+                    const signSlip = Math.sign(u_slip);
+                    v_pre -= signSlip * PHYSICS.MU_SLIDE * g * stepDt;
+                    w_forward += signSlip * (2.5 * PHYSICS.MU_SLIDE * g / R) * stepDt;
+                } else {
+                    // Faza czystego toczenia (rolling) przed zderzeniem
+                    v_pre -= PHYSICS.MU_ROLL * g * stepDt;
+                    w_forward = v_pre / R;
+                }
+
+                // Tłumienie rotacji bocznej o sukno
+                const wzDecay = PHYSICS.MU_SPIN_DECAY * g * stepDt / R;
+                if (Math.abs(wz) > wzDecay) wz -= Math.sign(wz) * wzDecay;
+                else wz = 0;
+
+                distRemaining -= stepDist;
+                t_travel += stepDt;
+            }
+
+            // Jeżeli biała bila nie dotoczyła się nawet do Ghost Ball
+            if (v_pre <= 0.08) {
+                return {
+                    reachedObjectBall: false,
+                    foul: true,
+                    finalX: state.cueBall.x + geom.ux * (geom.distAim - distRemaining),
+                    finalY: state.cueBall.y + geom.uy * (geom.distAim - distRemaining),
+                    railBounces: 0,
+                    cuePath: [],
+                    objPath: []
+                };
+            }
+
+            // 2. ZDERZENIE Z BILĄ OBIEKTOWĄ W PUNKCIE GHOST BALL
+            // Wektor normalny zderzenia: n = (geom.nx, geom.ny) (w stronę łuzy)
+            // Składowa prędkości białej bili wzdłuż normalnej n zostaje przekazana bili obiektowej:
+            // v_obj = v_pre * (u . n)
+            const v_n_mag = v_pre * geom.cosCut;
+
+            // Prędkość bili obiektowej tuż po zderzeniu
+            const objVx0 = geom.nx * v_n_mag * 0.97;
+            const objVy0 = geom.ny * v_n_mag * 0.97;
+
+            // Wektor styczny dla białej bili po zderzeniu (90 stopni do linii wbicia - Natural Tangent Line):
+            // t_vec = u - (u . n) * n
+            let vx = v_pre * (geom.ux - geom.cosCut * geom.nx);
+            let vy = v_pre * (geom.uy - geom.cosCut * geom.ny);
+
+            // Efekt tarcia bila-bila (collision-induced throw & delikatna strata energii):
+            vx *= 0.96;
+            vy *= 0.96;
+
+            // KLUCZOWE: Rotacja białej bili (wektor omega 3D) zachowuje swoją orientację w przestrzeni w ułamku sekundy zderzenia!
+            // Wektor jednostkowy kierunku ruchu PRZED zderzeniem to (geom.ux, geom.uy).
+            // Prędkość powierzchniowa dolnego punktu bili wynikająca z rotacji wzdłużnej (R * w_forward)
+            // nadal jest skierowana wzdłuż wektora (geom.ux, geom.uy)!
+            // Zapisujemy wektor prędkości obwodowej (v_rot_x, v_rot_y) = R * (w_y, -w_x):
+            let vrx = geom.ux * (R * w_forward);
+            let vry = geom.uy * (R * w_forward);
+
+            // 3. SYMULACJA RUCHU BIAŁEJ BILI PO ZDERZENIU (KROK CZASOWY dt = 0.0025 s)
+            let x = geom.ghostX;
+            let y = geom.ghostY;
+            let t = t_travel;
+            const dt = 0.0025;
+
+            let railBounces = 0;
+            let scratchFoul = false;
+            let blockerCollision = preCollisionFoul;
+
+            const cuePath = [];
+            if (recordFullPath) {
+                cuePath.push({
+                    x: state.cueBall.x,
+                    y: state.cueBall.y,
+                    t: 0,
+                    phase: 'aim'
+                });
+                cuePath.push({
+                    x: geom.ghostX,
+                    y: geom.ghostY,
+                    t: t_travel,
+                    phase: 'impact'
+                });
+            }
+
+            let stepCounter = 0;
+            const maxSteps = 4500; // max ~11 sekund ruchu
+
+            while (stepCounter < maxSteps) {
+                stepCounter++;
+                const speed = Math.hypot(vx, vy);
+                const rotSpeed = Math.hypot(vrx, vry);
+
+                // Warunek zatrzymania bili
+                if (speed < 0.015 && rotSpeed < 0.015) {
+                    vx = 0; vy = 0;
+                    break;
+                }
+
+                // Prędkość poślizgu punktu styku z suknem: u_slip_vec = v_cm - v_rot
+                const sx = vx - vrx;
+                const sy = vy - vry;
+                const slipSpeed = Math.hypot(sx, sy);
+
+                let currentPhase = 'roll';
+
+                if (slipSpeed > 0.025) {
+                    // FAZA POŚLIZGU (SLIDING) - Tarcie kinetyczne działa przeciwnie do wektora poślizgu (sx, sy).
+                    // To właśnie ta siła zakrzywia tor białej bili po paraboli (massee / top / draw curve)!
+                    currentPhase = 'slide';
+                    const invSlip = 1.0 / slipSpeed;
+                    const dirX = sx * invSlip;
+                    const dirY = sy * invSlip;
+
+                    // Zmiana prędkości liniowej środka masy: dv/dt = -mu_slide * g * dir
+                    const dv = PHYSICS.MU_SLIDE * g * dt;
+                    // Zmiana prędkości obwodowej z rotacji: d(v_rot)/dt = +(5/2) * mu_slide * g * dir
+                    const dvr = 2.5 * PHYSICS.MU_SLIDE * g * dt;
+
+                    // Sprawdzenie, czy w tym kroku nie nastąpi przejście do czystego toczenia
+                    if (dv + dvr >= slipSpeed) {
+                        // Dokładny punkt zrównania: v_new = (5*v + 2*v_rot) / 7
+                        vx = (5 * vx + 2 * vrx) / 7;
+                        vy = (5 * vy + 2 * vry) / 7;
+                        vrx = vx;
+                        vry = vy;
+                    } else {
+                        vx -= dirX * dv;
+                        vy -= dirY * dv;
+                        vrx += dirX * dvr;
+                        vry += dirY * dvr;
+                    }
+                } else {
+                    // FAZA CZYSTEGO TOCZENIA (ROLLING) - ruch prostoliniowy z oporem toczenia
+                    currentPhase = 'roll';
+                    if (speed > 0.001) {
+                        const decel = PHYSICS.MU_ROLL * g * dt;
+                        const newSpeed = Math.max(0, speed - decel);
+                        const ratio = newSpeed / speed;
+                        vx *= ratio;
+                        vy *= ratio;
+                        vrx = vx;
+                        vry = vy;
+                    } else {
+                        vx = 0; vy = 0; vrx = 0; vry = 0;
+                    }
+                }
+
+                // Tłumienie rotacji bocznej (wz)
+                const wzDecay = (PHYSICS.MU_SPIN_DECAY * g / R) * dt;
+                if (Math.abs(wz) > wzDecay) wz -= Math.sign(wz) * wzDecay;
+                else wz = 0;
+
+                // Przesunięcie pozycji białej bili
+                x += vx * dt;
+                y += vy * dt;
+                t += dt;
+
+                // Sprawdzenie, czy biała bila nie wpadła do którejkolwiek z 6 łuz (Scratch Foul!)
+                for (let p = 0; p < POCKETS.length; p++) {
+                    const pk = POCKETS[p];
+                    if (Math.hypot(x - pk.x, y - pk.y) < PHYSICS.POCKET_RADIUS) {
+                        scratchFoul = true;
+                        break;
+                    }
+                }
+                if (scratchFoul) {
+                    if (recordFullPath) cuePath.push({ x, y, t, phase: currentPhase });
+                    break;
+                }
+
+                // Sprawdzenie zderzenia z dodatkowymi bilami przeszkodami (Blockers)
+                for (let b = 0; b < state.blockers.length; b++) {
+                    const blk = state.blockers[b];
+                    if (Math.hypot(x - blk.x, y - blk.y) < 2 * R) {
+                        blockerCollision = true;
+                        break;
+                    }
+                }
+
+                // 4. DETEKCJA I FIZYKA ODBIĆ OD BAND (Z UWZGLĘDNIENIEM ROTACJI BOCZNEJ - ENGLISH)
+                let bouncedThisStep = false;
+
+                // Lewa banda (x = R)
+                if (x < R && vx < 0) {
+                    x = R;
+                    vx = -vx * PHYSICS.RAIL_RESTITUTION;
+                    // Prawy english (wz > 0) na lewej bandzie przyspiesza w górę (-y)
+                    const spinKick = -wz * R * PHYSICS.RAIL_SPIN_FACTOR;
+                    vy = vy * 0.88 + spinKick;
+                    // Po odbiciu od bandy część rotacji dostosowuje się do nowego kierunku
+                    vrx = vx * 0.45;
+                    vry = vy * 0.75;
+                    wz *= 0.55;
+                    bouncedThisStep = true;
+                }
+                // Prawa banda (x = TABLE_W - R)
+                else if (x > PHYSICS.TABLE_W - R && vx > 0) {
+                    x = PHYSICS.TABLE_W - R;
+                    vx = -vx * PHYSICS.RAIL_RESTITUTION;
+                    const spinKick = wz * R * PHYSICS.RAIL_SPIN_FACTOR;
+                    vy = vy * 0.88 + spinKick;
+                    vrx = vx * 0.45;
+                    vry = vy * 0.75;
+                    wz *= 0.55;
+                    bouncedThisStep = true;
+                }
+
+                // Górna banda (y = R)
+                if (y < R && vy < 0) {
+                    y = R;
+                    vy = -vy * PHYSICS.RAIL_RESTITUTION;
+                    const spinKick = wz * R * PHYSICS.RAIL_SPIN_FACTOR;
+                    vx = vx * 0.88 + spinKick;
+                    vry = vy * 0.45;
+                    vrx = vx * 0.75;
+                    wz *= 0.55;
+                    bouncedThisStep = true;
+                }
+                // Dolna banda (y = TABLE_H - R)
+                else if (y > PHYSICS.TABLE_H - R && vy > 0) {
+                    y = PHYSICS.TABLE_H - R;
+                    vy = -vy * PHYSICS.RAIL_RESTITUTION;
+                    const spinKick = -wz * R * PHYSICS.RAIL_SPIN_FACTOR;
+                    vx = vx * 0.88 + spinKick;
+                    vry = vy * 0.45;
+                    vrx = vx * 0.75;
+                    wz *= 0.55;
+                    bouncedThisStep = true;
+                }
+
+                if (bouncedThisStep) {
+                    railBounces++;
+                    if (recordFullPath) {
+                        cuePath.push({ x, y, t, phase: currentPhase, bounce: true });
+                    }
+                } else if (recordFullPath && (stepCounter % 5 === 0)) {
+                    cuePath.push({ x, y, t, phase: currentPhase });
+                }
+            }
+
+            if (recordFullPath) {
+                cuePath.push({ x, y, t, phase: 'stop' });
+            }
+
+            // 5. SYMULACJA BILI OBIEKTOWEJ DO ŁUZY
+            let objPocketed = true;
+            const objSpeed0 = Math.hypot(objVx0, objVy0);
+            // Czy bila obiektowa ma wystarczającą prędkość, aby dotoczyć się do łuzy?
+            const minSpeedToReachPocket = Math.sqrt(2 * PHYSICS.MU_ROLL * g * geom.distToPocket * 0.85);
+            if (objSpeed0 < minSpeedToReachPocket) {
+                objPocketed = false;
+            }
+
+            const objPath = [];
+            if (recordFullPath) {
+                objPath.push({ x: state.objectBall.x, y: state.objectBall.y, t: t_travel });
+                const objTravelTime = geom.distToPocket / Math.max(0.25, objSpeed0 * 0.82);
+                objPath.push({
+                    x: geom.pocket.x,
+                    y: geom.pocket.y,
+                    t: t_travel + objTravelTime
+                });
+            }
+
+            const distToTarget = Math.hypot(x - state.targetPos.x, y - state.targetPos.y);
+
+            return {
+                power,
+                tipX: effTipX,
+                tipY: effTipY,
+                reachedObjectBall: true,
+                objPocketed,
+                foul: scratchFoul || blockerCollision || !objPocketed,
+                scratchFoul,
+                blockerCollision,
+                finalX: x,
+                finalY: y,
+                distToTarget,
+                railBounces,
+                cuePath,
+                objPath,
+                totalTime: t
+            };
+        }
+
+        // Pomocnicza funkcja geometryczna: odległość punktu (px, py) od odcinka (x1,y1)-(x2,y2)
+        function distPointToSegment(px, py, x1, y1, x2, y2) {
+            const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+            if (l2 === 0) return Math.hypot(px - x1, py - y1);
+            let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+        }
+
+        /***********************************************************************
+         * 5. INVERSE PHYSICS SOLVER (OPTYMALIZATOR WIELOWARIANTOWY)
+         ***********************************************************************/
+        function scoreCandidate(simResult) {
+            if (!simResult.reachedObjectBall || simResult.foul) {
+                return 99999 + simResult.distToTarget * 100;
+            }
+            // Główny cel: minimalizacja odległości końcowej od Target Position (w metrach)
+            let cost = simResult.distToTarget * 120.0;
+
+            // Preferencja dla naturalnych, powtarzalnych uderzeń:
+            // 1. Umiarkowana siła (najłatwiejsza kontrola w przedziale 28 - 62)
+            const powerDiff = Math.abs(simResult.power - 44) / 100;
+            cost += powerDiff * 1.4;
+            if (simResult.power > 85) cost += 2.5; // Kara za ekstremalną siłę
+
+            // 2. Preferencja dla mniejszej rotacji bocznej (mniejszy deflekt / squirt kija)
+            cost += Math.abs(simResult.tipX) * 1.35;
+
+            // 3. Lekka kara za ekstremalny offset przy krawędzi bili
+            const tipMag = Math.hypot(simResult.tipX, simResult.tipY);
+            if (tipMag > 0.85) cost += (tipMag - 0.85) * 4.0;
+
+            return cost;
+        }
+
+        function runInverseSolver() {
+            const geom = computeGhostBallGeometry(state.cueBall, state.objectBall, state.selectedPocketId);
+
+            if (!geom.isPossible) {
+                state.solvedVariants = [];
+                updateVariantsUI(geom);
+                recalculateCurrentManualShot();
+                return;
+            }
+
+            // Grupujemy najlepsze kandydaty według liczby odbić od band (0 band, 1 banda, 2 bandy, 3+ band)
+            const bestByRails = {
+                0: null,
+                1: null,
+                2: null,
+                3: null
+            };
+
+            // ETAP 1: Przeszukiwanie zgrubne (Coarse Grid Search) w przestrzeni 3D (Power, TipY, TipX)
+            const powers = [16, 26, 36, 46, 56, 68, 80, 92];
+            const tipYs  = [-0.90, -0.65, -0.40, -0.15, 0.0, 0.25, 0.55, 0.85];
+            const tipXs  = [-0.75, -0.35, 0.0, 0.35, 0.75];
+
+            for (let p of powers) {
+                for (let ty of tipYs) {
+                    for (let tx of tipXs) {
+                        // Ograniczenie kołowe powierzchni bili
+                        if (tx * tx + ty * ty > 1.05) continue;
+
+                        const res = simulateShotPhysics(p, tx, ty, geom, false);
+                        if (res.foul) continue;
+
+                        const bucket = Math.min(3, res.railBounces);
+                        const score = scoreCandidate(res);
+
+                        if (!bestByRails[bucket] || score < bestByRails[bucket].score) {
+                            bestByRails[bucket] = { power: p, tipX: tx, tipY: ty, score, res };
+                        }
+                    }
+                }
+            }
+
+            // ETAP 2: Dokładne dostrajanie lokalne (Nelder-Mead / Pattern Refinement) dla każdego znalezionego wariantu band
+            const refinedVariants = [];
+
+            Object.keys(bestByRails).forEach(railKey => {
+                const candidate = bestByRails[railKey];
+                if (!candidate) return;
+
+                let bestP = candidate.power;
+                let bestTX = candidate.tipX;
+                let bestTY = candidate.tipY;
+                let bestScore = candidate.score;
+
+                // 3 iteracje zagęszczania kroku
+                const steps = [
+                    { dp: 5, dt: 0.12 },
+                    { dp: 2, dt: 0.05 },
+                    { dp: 1, dt: 0.02 }
+                ];
+
+                for (let st of steps) {
+                    let improved = true;
+                    let iter = 0;
+                    while (improved && iter < 8) {
+                        improved = false;
+                        iter++;
+                        const deltas = [
+                            [st.dp, 0, 0], [-st.dp, 0, 0],
+                            [0, st.dt, 0], [0, -st.dt, 0],
+                            [0, 0, st.dt], [0, 0, -st.dt],
+                            [st.dp, 0, st.dt], [-st.dp, 0, -st.dt]
+                        ];
+                        for (let [dp, dtx, dty] of deltas) {
+                            const np = Math.max(1, Math.min(100, bestP + dp));
+                            let ntx = bestTX + dtx;
+                            let nty = bestTY + dty;
+                            const mag = Math.hypot(ntx, nty);
+                            if (mag > 1.0) { ntx /= mag; nty /= mag; }
+
+                            const r = simulateShotPhysics(np, ntx, nty, geom, false);
+                            if (r.foul) continue;
+                            const sc = scoreCandidate(r);
+                            if (sc < bestScore) {
+                                bestScore = sc;
+                                bestP = np;
+                                bestTX = ntx;
+                                bestTY = nty;
+                                improved = true;
+                            }
+                        }
+                    }
+                }
+
+                // Pełna symulacja ze ścieżką dla wybranego optimum w danej kategorii
+                const fullSim = simulateShotPhysics(bestP, bestTX, bestTY, geom, true);
+                if (fullSim.distToTarget < 0.42) { // Akceptujemy warianty, które lądują w sensownym pobliżu celu (<42 cm)
+                    refinedVariants.push({
+                        railCategory: parseInt(railKey),
+                        railBounces: fullSim.railBounces,
+                        score: bestScore,
+                        sim: fullSim
+                    });
+                }
+            });
+
+            // Sortuj znalezione warianty od najlepszego wyniku (najbliżej celu i najbardziej naturalne uderzenie)
+            refinedVariants.sort((a, b) => a.score - b.score);
+
+            // Jeśli żaden wariant nie zmieścił się w 42 cm (np. ekstremalnie trudna pozycja), dodaj absolutnie najbliższy
+            if (refinedVariants.length === 0) {
+                let fallbackBest = null;
+                Object.values(bestByRails).forEach(c => {
+                    if (c && (!fallbackBest || c.score < fallbackBest.score)) fallbackBest = c;
+                });
+                if (fallbackBest) {
+                    const fullSim = simulateShotPhysics(fallbackBest.power, fallbackBest.tipX, fallbackBest.tipY, geom, true);
+                    refinedVariants.push({
+                        railCategory: fullSim.railBounces,
+                        railBounces: fullSim.railBounces,
+                        score: fallbackBest.score,
+                        sim: fullSim
+                    });
+                }
+            }
+
+            state.solvedVariants = refinedVariants;
+            state.activeVariantIndex = 0;
+            state.manualOverride = false;
+
+            if (refinedVariants.length > 0) {
+                const best = refinedVariants[0].sim;
+                state.shotParams.power = Math.round(best.power);
+                state.shotParams.tipX = best.tipX;
+                state.shotParams.tipY = best.tipY;
+                state.currentSimulatedResult = best;
+            } else {
+                recalculateCurrentManualShot();
+            }
+
+            updateVariantsUI(geom);
+            syncControlsWithShotParams();
+            renderAll();
+        }
+
+        function selectVariant(index) {
+            if (!state.solvedVariants[index]) return;
+            state.activeVariantIndex = index;
+            state.manualOverride = false;
+            const chosen = state.solvedVariants[index].sim;
+            state.shotParams.power = Math.round(chosen.power);
+            state.shotParams.tipX = chosen.tipX;
+            state.shotParams.tipY = chosen.tipY;
+            state.currentSimulatedResult = chosen;
+
+            const geom = computeGhostBallGeometry(state.cueBall, state.objectBall, state.selectedPocketId);
+            updateVariantsUI(geom);
+            syncControlsWithShotParams();
+            renderAll();
+        }
+
+        function applySolvedToTable() {
+            if (state.solvedVariants.length > 0) {
+                selectVariant(0);
+            } else {
+                runInverseSolver();
+            }
+        }
+
+        function recalculateCurrentManualShot() {
+            const geom = computeGhostBallGeometry(state.cueBall, state.objectBall, state.selectedPocketId);
+            state.currentSimulatedResult = simulateShotPhysics(
+                state.shotParams.power,
+                state.shotParams.tipX,
+                state.shotParams.tipY,
+                geom,
+                true
+            );
+            syncControlsWithShotParams();
+            renderAll();
+        }
+
+        /***********************************************************************
+         * 6. AKTUALIZACJA INTERFEJSU UŻYTKOWNIKA (DASHBOARD & WARIANTY)
+         ***********************************************************************/
+        function getRailLabel(bounces) {
+            if (bounces === 0) return "Bezpośrednie (0 band)";
+            if (bounces === 1) return "Po 1 bandzie";
+            if (bounces === 2) return "Po 2 bandach";
+            return `Po ${bounces} bandach`;
+        }
+
+        function updateVariantsUI(geom) {
+            const container = document.getElementById('variants-container');
+            const badge = document.getElementById('shot-feasibility-badge');
+            const cutInfo = document.getElementById('cut-angle-info');
+
+            cutInfo.textContent = `Kąt cięcia: ${geom.cutAngleDeg.toFixed(1)}°`;
+
+            if (!geom.isPossible) {
+                badge.textContent = "Kąt niemożliwy do bezpośredniego wbicia!";
+                badge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950 text-rose-300 border border-rose-700/60";
+                container.innerHTML = `
+                    <div class="col-span-full bg-rose-950/30 border border-rose-800/60 rounded-xl p-3 text-xs text-rose-200 flex items-center gap-2">
+                        <span>Wybrana łuza wymaga kąta cięcia powyżej 83° lub bila obiektowa jest zasłonięta. Wybierz inną łuzę lub przesuń białą bilę.</span>
+                    </div>
+                `;
+                return;
+            }
+
+            badge.textContent = `Wbicie dostępne (Cięcie ${geom.cutAngleDeg.toFixed(0)}°)`;
+            badge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-700/60";
+
+            if (state.solvedVariants.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full bg-amber-950/30 border border-amber-800/60 rounded-xl p-3 text-xs text-amber-200">
+                        Brak bezpiecznej ścieżki bez faulu dla obecnego układu przeszkód. Spróbuj przestawić celownik pozycji.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = state.solvedVariants.map((v, idx) => {
+                const isSelected = (!state.manualOverride && idx === state.activeVariantIndex);
+                const errCm = (v.sim.distToTarget * 100).toFixed(1);
+                const vDesc = v.sim.tipY > 0.15 ? 'Follow' : (v.sim.tipY < -0.15 ? 'Draw' : 'Stun');
+                return `
+                    <button onclick="selectVariant(${idx})" class="text-left p-3 rounded-xl border transition-all flex flex-col justify-between gap-2 ${
+                        isSelected
+                        ? 'bg-emerald-950/50 border-emerald-500 shadow-lg shadow-emerald-950/50'
+                        : 'bg-slate-950/70 hover:bg-slate-800/70 border-slate-800'
+                    }">
+                        <div class="flex items-center justify-between w-full">
+                            <span class="text-xs font-bold ${isSelected ? 'text-emerald-300' : 'text-slate-200'}">
+                                Wariant ${idx + 1}: ${getRailLabel(v.railBounces)}
+                            </span>
+                            ${idx === 0 ? '<span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Optimum</span>' : ''}
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                            <span>Siła: <strong class="text-white">${Math.round(v.sim.power)}</strong></span>
+                            <span>Typ: <strong class="text-cyan-300">${vDesc}</strong></span>
+                            <span class="${v.sim.distToTarget < 0.08 ? 'text-emerald-400' : 'text-amber-400'}">±${errCm}cm</span>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function syncControlsWithShotParams() {
+            const { power, tipX, tipY } = state.shotParams;
+            const sim = state.currentSimulatedResult;
+
+            // Badge trybu (Auto vs Ręczny)
+            const modeBadge = document.getElementById('mode-indicator-badge');
+            if (state.manualOverride) {
+                modeBadge.textContent = "KOREKTA RĘCZNA";
+                modeBadge.className = "px-2 py-0.5 text-[11px] font-mono uppercase rounded bg-amber-950 text-amber-400 border border-amber-700/50";
+            } else {
+                modeBadge.textContent = "AUTO SOLVER";
+                modeBadge.className = "px-2 py-0.5 text-[11px] font-mono uppercase rounded bg-emerald-950 text-emerald-400 border border-emerald-700/50";
+            }
+
+            // Opis punktu uderzenia (Tip)
+            const maxOffsetRatio = 0.72;
+            const rx = (tipX * maxOffsetRatio).toFixed(2);
+            const ry = (tipY * maxOffsetRatio).toFixed(2);
+            document.getElementById('tip-coords-text').textContent = `X: ${rx >= 0 ? '+' : ''}${rx}R | Y: ${ry >= 0 ? '+' : ''}${ry}R`;
+
+            // Opis pionowy
+            const vertPct = Math.round(Math.abs(tipY) * 100);
+            const vertEl = document.getElementById('tip-vertical-desc');
+            if (tipY > 0.12) {
+                vertEl.textContent = `Górna rotacja (Follow) ${vertPct}%`;
+                vertEl.className = "text-xs font-semibold text-emerald-400";
+            } else if (tipY < -0.12) {
+                vertEl.textContent = `Dolna rotacja (Draw / Wsteczna) ${vertPct}%`;
+                vertEl.className = "text-xs font-semibold text-rose-400";
+            } else {
+                vertEl.textContent = `Środek / Stop-ball (Stun) ${vertPct}%`;
+                vertEl.className = "text-xs font-semibold text-amber-300";
+            }
+
+            // Opis poziomy (English)
+            const horzPct = Math.round(Math.abs(tipX) * 100);
+            const horzEl = document.getElementById('tip-horizontal-desc');
+            if (tipX > 0.08) {
+                horzEl.textContent = `Prawa rotacja (Right English) ${horzPct}%`;
+                horzEl.className = "text-xs font-semibold text-cyan-400";
+            } else if (tipX < -0.08) {
+                horzEl.textContent = `Lewa rotacja (Left English) ${horzPct}%`;
+                horzEl.className = "text-xs font-semibold text-cyan-400";
+            } else {
+                horzEl.textContent = `Brak rotacji bocznej (Oś pionowa)`;
+                horzEl.className = "text-xs font-semibold text-slate-300";
+            }
+
+            // Liczba kapek (1 kapka bilardowa ~ 12.7 mm, max offset ~ 20.5 mm = ~1.6 kapki)
+            const tipsOffset = (Math.hypot(tipX, tipY) * 1.65).toFixed(1);
+            document.getElementById('tip-offset-tips').textContent = `${tipsOffset} kapki od centrum`;
+
+            // Siła uderzenia
+            const roundedPower = Math.round(power);
+            document.getElementById('power-value-big').textContent = roundedPower;
+            document.getElementById('power-bar-fill').style.width = `${roundedPower}%`;
+            document.getElementById('power-slider').value = roundedPower;
+            document.getElementById('power-word-desc').textContent = getPowerDescription(roundedPower);
+            document.getElementById('power-ms-readout').textContent = `${powerToVelocity(roundedPower).toFixed(2)} m/s`;
+
+            // Wyjaśnienie fizyczne i dokładność
+            if (sim) {
+                const errCm = (sim.distToTarget * 100).toFixed(1);
+                const errEl = document.getElementById('error-distance-readout');
+                errEl.textContent = `${errCm} cm`;
+                errEl.className = sim.distToTarget < 0.08
+                    ? "text-base font-bold text-emerald-400"
+                    : (sim.distToTarget < 0.22 ? "text-base font-bold text-amber-400" : "text-base font-bold text-rose-400");
+
+                const expEl = document.getElementById('physics-explanation');
+                if (sim.scratchFoul) {
+                    expEl.innerHTML = `<strong class="text-rose-400">UWAGA FAUL (Scratch):</strong> Przy tych parametrach biała bila wpada do łuzy! Zmień rotację lub siłę uderzenia.`;
+                } else if (sim.blockerCollision) {
+                    expEl.innerHTML = `<strong class="text-rose-400">KOLIZJA Z PRZESZKODĄ:</strong> Tor ruchu zahacza o inną bilę na stole.`;
+                } else {
+                    const spinBehavior = tipY > 0.2
+                        ? "Górna rotacja (Follow) powoduje wygięcie paraboli ruchu do przodu względem linii stycznej 90°."
+                        : (tipY < -0.2
+                            ? "Wsteczna rotacja (Draw) w fazie poślizgu odciąga białą bilę do tyłu po krzywej parabolicznej przed przejściem w toczenie."
+                            : "Uderzenie blisko środka (Stun) utrzymuje białą bilę długo na naturalnej linii stycznej 90° po zderzeniu.");
+                    const railBehavior = sim.railBounces > 0
+                        ? `Biała bila odbija się od <strong>${sim.railBounces} ${sim.railBounces === 1 ? 'bandy' : 'band'}</strong>, gdzie rotacja boczna (${tipX >= 0 ? 'Prawa' : 'Lewa'} ${horzPct}%) modyfikuje kąt wyjścia.`
+                        : `Pozycjonowanie bezpośrednie bez użycia band (czysta kontrola tempa na suknie).`;
+                    expEl.innerHTML = `${spinBehavior} ${railBehavior}`;
+                }
+            }
+
+            drawCueBallSelector();
+        }
+
+        /***********************************************************************
+         * 7. RYSOWANIE DUŻEJ BIAŁEJ BILI (SELEKTOR PUNKTU UDERZENIA - TIP)
+         ***********************************************************************/
+        function drawCueBallSelector() {
+            const w = tipCanvas.width;
+            const h = tipCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const ballRadiusPx = w * 0.44;
+            const maxTipRadiusPx = ballRadiusPx * 0.72; // Granica bezpiecznego uderzenia (Miscue Limit)
+
+            tipCtx.clearRect(0, 0, w, h);
+
+            // Cień pod bilą
+            tipCtx.save();
+            tipCtx.beginPath();
+            tipCtx.arc(cx, cy, ballRadiusPx, 0, Math.PI * 2);
+            const ballGrad = tipCtx.createRadialGradient(cx - ballRadiusPx * 0.3, cy - ballRadiusPx * 0.3, ballRadiusPx * 0.05, cx, cy, ballRadiusPx);
+            ballGrad.addColorStop(0, '#ffffff');
+            ballGrad.addColorStop(0.7, '#f1f5f9');
+            ballGrad.addColorStop(0.92, '#cbd5e1');
+            ballGrad.addColorStop(1, '#94a3b8');
+            tipCtx.fillStyle = ballGrad;
+            tipCtx.fill();
+            tipCtx.lineWidth = 2;
+            tipCtx.strokeStyle = '#475569';
+            tipCtx.stroke();
+            tipCtx.restore();
+
+            // Okrąg limitu kiksu (Miscue Limit 0.72 R)
+            tipCtx.save();
+            tipCtx.beginPath();
+            tipCtx.arc(cx, cy, maxTipRadiusPx, 0, Math.PI * 2);
+            tipCtx.setLineDash([4, 4]);
+            tipCtx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
+            tipCtx.lineWidth = 1.5;
+            tipCtx.stroke();
+
+            // Wewnętrzny okrąg 50% rotacji
+            tipCtx.beginPath();
+            tipCtx.arc(cx, cy, maxTipRadiusPx * 0.5, 0, Math.PI * 2);
+            tipCtx.setLineDash([2, 3]);
+            tipCtx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+            tipCtx.lineWidth = 1;
+            tipCtx.stroke();
+            tipCtx.restore();
+
+            // Osie krzyża celowniczego na bili
+            tipCtx.save();
+            tipCtx.strokeStyle = 'rgba(71, 85, 105, 0.4)';
+            tipCtx.lineWidth = 1;
+            tipCtx.beginPath();
+            tipCtx.moveTo(cx - ballRadiusPx * 0.85, cy);
+            tipCtx.lineTo(cx + ballRadiusPx * 0.85, cy);
+            tipCtx.moveTo(cx, cy - ballRadiusPx * 0.85);
+            tipCtx.lineTo(cx, cy + ballRadiusPx * 0.85);
+            tipCtx.stroke();
+            tipCtx.restore();
+
+            // Pozycja czerwonej kropki Tipa (Uwaga: w Canvas oś Y rośnie w dół, więc górna rotacja +tipY to cy - tipY)
+            const dotX = cx + state.shotParams.tipX * maxTipRadiusPx;
+            const dotY = cy - state.shotParams.tipY * maxTipRadiusPx;
+
+            // Obrys średnicy kapki kija (ok. 12.7 mm w skali bili 57.15 mm -> ~22% średnicy bili)
+            const leatherTipRadiusPx = ballRadiusPx * 0.21;
+            tipCtx.save();
+            tipCtx.beginPath();
+            tipCtx.arc(dotX, dotY, leatherTipRadiusPx, 0, Math.PI * 2);
+            tipCtx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+            tipCtx.fill();
+            tipCtx.lineWidth = 1.5;
+            tipCtx.strokeStyle = 'rgba(220, 38, 38, 0.65)';
+            tipCtx.stroke();
+
+            // Główny punkt centralny Tipa
+            tipCtx.beginPath();
+            tipCtx.arc(dotX, dotY, 6.5, 0, Math.PI * 2);
+            tipCtx.fillStyle = '#ef4444';
+            tipCtx.fill();
+            tipCtx.lineWidth = 2;
+            tipCtx.strokeStyle = '#ffffff';
+            tipCtx.stroke();
+
+            // Mały celownik w środku kropki
+            tipCtx.beginPath();
+            tipCtx.arc(dotX, dotY, 2, 0, Math.PI * 2);
+            tipCtx.fillStyle = '#ffffff';
+            tipCtx.fill();
+            tipCtx.restore();
+        }
+
+        /***********************************************************************
+         * 8. RYSOWANIE STOŁU BILARDOWEGO 9-STOPOWEGO Z LOTU PTAKA
+         ***********************************************************************/
+        function resizeTableCanvas() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            const availW = wrapper.clientWidth;
+
+            // Stół ma proporcje pola gry 2:1 + drewniana rama z diamentami
+            const targetCanvasW = Math.max(600, Math.min(1200, availW));
+            const frameRatio = 0.055; // grubość ramy w stosunku do szerokości
+            const pad = Math.round(targetCanvasW * frameRatio);
+            const playW = targetCanvasW - 2 * pad;
+            const playH = Math.round(playW / 2);
+            const targetCanvasH = playH + 2 * pad;
+
+            tableCanvas.width = targetCanvasW;
+            tableCanvas.height = targetCanvasH;
+
+            renderMetrics.padX = pad;
+            renderMetrics.padY = pad;
+            renderMetrics.scale = playW / PHYSICS.TABLE_W;
+
+            renderAll();
+        }
+
+        // Konwersja metrów stołu -> piksele Canvas
+        function m2pxX(mx) { return renderMetrics.padX + mx * renderMetrics.scale; }
+        function m2pxY(my) { return renderMetrics.padY + my * renderMetrics.scale; }
+        // Konwersja pikseli Canvas -> metry stołu
+        function px2mX(px) { return (px - renderMetrics.padX) / renderMetrics.scale; }
+        function px2mY(py) { return (py - renderMetrics.padY) / renderMetrics.scale; }
+
+        function renderAll(animTimestamp = null) {
+            const w = tableCanvas.width;
+            const h = tableCanvas.height;
+            const padX = renderMetrics.padX;
+            const padY = renderMetrics.padY;
+            const playW = PHYSICS.TABLE_W * renderMetrics.scale;
+            const playH = PHYSICS.TABLE_H * renderMetrics.scale;
+            const ballPxR = PHYSICS.BALL_R * renderMetrics.scale;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // 1. Drewniana rama stołu (Mahogany / Dark Matte Walnut)
+            const woodGrad = ctx.createLinearGradient(0, 0, w, h);
+            woodGrad.addColorStop(0, '#2a1810');
+            woodGrad.addColorStop(0.5, '#3b2316');
+            woodGrad.addColorStop(1, '#1e110a');
+            ctx.fillStyle = woodGrad;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, w, h, 18);
+            ctx.fill();
+
+            // Zewnętrzny metalowy obrys ramy
+            ctx.strokeStyle = '#5c3a24';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 2. Bandy gumowe (Cushions) wokół pola gry
+            const cushionThick = padX * 0.28;
+            ctx.fillStyle = state.clothTournamentBlue ? '#114f66' : '#0b4628';
+            ctx.fillRect(padX - cushionThick, padY - cushionThick, playW + 2 * cushionThick, playH + 2 * cushionThick);
+
+            // 3. Sukno bilardowe (Playing Surface 2:1)
+            const feltGrad = ctx.createRadialGradient(w / 2, h / 2, playW * 0.05, w / 2, h / 2, playW * 0.7);
+            if (state.clothTournamentBlue) {
+                feltGrad.addColorStop(0, '#1f88ab');
+                feltGrad.addColorStop(1, '#15627d');
+            } else {
+                feltGrad.addColorStop(0, '#187c4c');
+                feltGrad.addColorStop(1, '#105433');
+            }
+            ctx.fillStyle = feltGrad;
+            ctx.fillRect(padX, padY, playW, playH);
+
+            // Subtelny cień wewnętrzny przy bandach
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(padX, padY, playW, playH);
+
+            // 4. Linia bazy (Head String - 1/4 długości stołu) oraz Punkt Główny (Foot Spot - 3/4 długości)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            const headStringX = m2pxX(PHYSICS.TABLE_W * 0.25);
+            ctx.moveTo(headStringX, padY);
+            ctx.lineTo(headStringX, padY + playH);
+            ctx.stroke();
+
+            // Punkt główny (Foot Spot) i Head Spot
+            const footSpotX = m2pxX(PHYSICS.TABLE_W * 0.75);
+            const centerY = m2pxY(PHYSICS.TABLE_H * 0.5);
+            [headStringX, footSpotX].forEach(sx => {
+                ctx.beginPath();
+                ctx.arc(sx, centerY, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.fill();
+            });
+            ctx.restore();
+
+            // 5. Diamenty celownicze na bandach (8 segmentów wzdłuż, 4 wszerz)
+            ctx.save();
+            for (let i = 1; i <= 7; i++) {
+                if (i === 4) continue; // Środkowa łuza
+                const dx = padX + (playW / 8) * i;
+                drawDiamond(dx, padY * 0.42);
+                drawDiamond(dx, padY + playH + padY * 0.58);
+            }
+            for (let j = 1; j <= 3; j++) {
+                const dy = padY + (playH / 4) * j;
+                drawDiamond(padX * 0.42, dy);
+                drawDiamond(padX + playW + padX * 0.58, dy);
+            }
+            ctx.restore();
+
+            // 6. Rysowanie 6 Łuz (z podświetleniem wybranej łuzy docelowej)
+            POCKETS.forEach(pocket => {
+                const px = m2pxX(pocket.x);
+                const py = m2pxY(pocket.y);
+                const pocketR = PHYSICS.POCKET_RADIUS * renderMetrics.scale;
+                const isSelected = (pocket.id === state.selectedPocketId);
+
+                // Otwór łuzy
+                ctx.beginPath();
+                ctx.arc(px, py, pocketR, 0, Math.PI * 2);
+                ctx.fillStyle = '#07090e';
+                ctx.fill();
+
+                if (isSelected) {
+                    // Pulsująca otoczka dla wybranej łuzy docelowej
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(px, py, pocketR + 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#f59e0b';
+                    ctx.lineWidth = 3.5;
+                    ctx.shadowColor = '#f59e0b';
+                    ctx.shadowBlur = 12;
+                    ctx.stroke();
+
+                    // Etykieta "CEL" przy wybranej łuzie
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.font = 'bold 10px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    const labelOffsetY = pocket.y === 0 ? -pocketR - 10 : pocketR + 16;
+                    ctx.fillText('ŁUZA CEL', px, py + labelOffsetY);
+                    ctx.restore();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(px, py, pocketR, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#334155';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+
+            // 7. Obliczenie geometrii Ghost Ball i narysowanie wektorów trajektorii
+            const geom = computeGhostBallGeometry(state.cueBall, state.objectBall, state.selectedPocketId);
+            const sim = state.currentSimulatedResult;
+
+            // Rysowanie znacznika pozycji docelowej dla białej bili (Target Position)
+            drawTargetZone(m2pxX(state.targetPos.x), m2pxY(state.targetPos.y), ballPxR);
+
+            // Rysujemy linie celowania, Ghost Ball oraz krzywą trajektorię białej bili
+            if (geom.isPossible && sim) {
+                drawTrajectoriesAndVectors(geom, sim, ballPxR);
+            } else {
+                // Jeśli wbicie bezpośrednie jest geometrycznie zablokowane, rysujemy przerywaną czerwoną linię ostrzegawczą
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([6, 6]);
+                ctx.moveTo(m2pxX(state.cueBall.x), m2pxY(state.cueBall.y));
+                ctx.lineTo(m2pxX(geom.ghostX), m2pxY(geom.ghostY));
+                ctx.strokeStyle = 'rgba(244, 63, 94, 0.7)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 8. Wyznaczenie aktualnych pozycji bil (statycznych lub w trakcie animacji na żywo)
+            let cueDrawPos = { x: state.cueBall.x, y: state.cueBall.y };
+            let objDrawPos = { x: state.objectBall.x, y: state.objectBall.y };
+            let hideObjectBall = false;
+
+            if (state.animating && sim && sim.cuePath.length > 1) {
+                const elapsed = (animTimestamp - state.animStartTime) / 1000;
+                cueDrawPos = samplePathAtTime(sim.cuePath, elapsed);
+
+                if (sim.objPath && sim.objPath.length >= 2) {
+                    const tImpact = sim.objPath[0].t;
+                    const tEndObj = sim.objPath[sim.objPath.length - 1].t;
+                    if (elapsed >= tImpact) {
+                        if (elapsed >= tEndObj && sim.objPocketed) {
+                            hideObjectBall = true;
+                        } else {
+                            objDrawPos = samplePathAtTime(sim.objPath, elapsed);
+                        }
+                    }
+                }
+
+                if (elapsed > sim.totalTime + 0.35) {
+                    state.animating = false;
+                    document.getElementById('btn-simulate-text').textContent = "Symuluj uderzenie (Animacja na żywo)";
+                }
+            }
+
+            // 9. Rysowanie bil przeszkadzających (Blockers)
+            state.blockers.forEach(blk => {
+                drawPoolBall(m2pxX(blk.x), m2pxY(blk.y), ballPxR, blk.color, blk.number, false);
+            });
+
+            // 10. Rysowanie Bili Obiektowej (nr 9 lub 8)
+            if (!hideObjectBall) {
+                drawPoolBall(m2pxX(objDrawPos.x), m2pxY(objDrawPos.y), ballPxR, '#eab308', state.objectBall.number, true);
+            }
+
+            // 11. Rysowanie Białej Bili (Cue Ball) z kropką rotacji
+            drawCueBallOnTable(m2pxX(cueDrawPos.x), m2pxY(cueDrawPos.y), ballPxR);
+
+            // Jeśli trwa animacja, kontynuuj pętlę requestAnimationFrame
+            if (state.animating) {
+                requestAnimationFrame(renderAll);
+            }
+        }
+
+        function drawDiamond(x, y) {
+            const s = 4.5;
+            ctx.beginPath();
+            ctx.moveTo(x, y - s);
+            ctx.lineTo(x + s * 1.4, y);
+            ctx.lineTo(x, y + s);
+            ctx.lineTo(x - s * 1.4, y);
+            ctx.closePath();
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fill();
+        }
+
+        function drawTargetZone(px, py, ballPxR) {
+            ctx.save();
+            // Zewnętrzny pierścień strefy pozycjonowania
+            ctx.beginPath();
+            ctx.arc(px, py, ballPxR * 2.1, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(6, 182, 212, 0.12)';
+            ctx.fill();
+            ctx.setLineDash([5, 4]);
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Wewnętrzny obrys rozmiaru białej bili
+            ctx.beginPath();
+            ctx.setLineDash([]);
+            ctx.arc(px, py, ballPxR, 0, Math.PI * 2);
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Krzyżyk w środku celu
+            const ch = 7;
+            ctx.beginPath();
+            ctx.moveTo(px - ch, py);
+            ctx.lineTo(px + ch, py);
+            ctx.moveTo(px, py - ch);
+            ctx.lineTo(px, py + ch);
+            ctx.stroke();
+
+            // Podpis nad celem
+            ctx.fillStyle = '#67e8f9';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('POZYCJA DOCELOWA', px, py - ballPxR * 2.4);
+            ctx.restore();
+        }
+
+        function drawTrajectoriesAndVectors(geom, sim, ballPxR) {
+            const cuePxX = m2pxX(state.cueBall.x);
+            const cuePxY = m2pxY(state.cueBall.y);
+            const ghostPxX = m2pxX(geom.ghostX);
+            const ghostPxY = m2pxY(geom.ghostY);
+            const objPxX = m2pxX(state.objectBall.x);
+            const objPxY = m2pxY(state.objectBall.y);
+            const pocketPxX = m2pxX(geom.pocket.aimX);
+            const pocketPxY = m2pxY(geom.pocket.aimY);
+
+            ctx.save();
+
+            // A. Linia celowania (od Białej Bili do Ghost Ball)
+            ctx.beginPath();
+            ctx.setLineDash([6, 5]);
+            ctx.moveTo(cuePxX, cuePxY);
+            ctx.lineTo(ghostPxX, ghostPxY);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Strzałka na linii celowania w połowie drogi
+            drawDirectionArrow(
+                (cuePxX + ghostPxX) / 2,
+                (cuePxY + ghostPxY) / 2,
+                Math.atan2(ghostPxY - cuePxY, ghostPxX - cuePxX),
+                '#ffffff'
+            );
+
+            // B. Naturalna linia styczna 90° (Stun Tangent Reference Line) - delikatna linia referencyjna
+            const tangX = geom.ux - geom.cosCut * geom.nx;
+            const tangY = geom.uy - geom.cosCut * geom.ny;
+            const tangMag = Math.hypot(tangX, tangY);
+            if (tangMag > 0.01) {
+                ctx.beginPath();
+                ctx.setLineDash([2, 4]);
+                ctx.moveTo(ghostPxX, ghostPxY);
+                ctx.lineTo(ghostPxX + (tangX / tangMag) * 110, ghostPxY + (tangY / tangMag) * 110);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // C. Tor bili obiektowej do wybranej łuzy
+            ctx.beginPath();
+            ctx.moveTo(objPxX, objPxY);
+            ctx.lineTo(pocketPxX, pocketPxY);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            drawDirectionArrow(
+                (objPxX + pocketPxX) / 2,
+                (objPxY + pocketPxY) / 2,
+                Math.atan2(pocketPxY - objPxY, pocketPxX - objPxX),
+                '#fbbf24'
+            );
+
+            // D. Ghost Ball (Bila-Duch w miejscu zderzenia)
+            ctx.beginPath();
+            ctx.arc(ghostPxX, ghostPxY, ballPxR, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+            ctx.fill();
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // E. ZAKRZYWIONY FIZYCZNIE TOR BIAŁEJ BILI PO ZDERZENIU (Poślizg -> Toczenie + Odbicia)
+            if (sim.cuePath && sim.cuePath.length > 2) {
+                for (let i = 1; i < sim.cuePath.length - 1; i++) {
+                    const p1 = sim.cuePath[i];
+                    const p2 = sim.cuePath[i + 1];
+                    const x1 = m2pxX(p1.x);
+                    const y1 = m2pxY(p1.y);
+                    const x2 = m2pxX(p2.x);
+                    const y2 = m2pxY(p2.y);
+
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+
+                    if (sim.foul) {
+                        ctx.strokeStyle = '#f43f5e'; // Czerwony przy faulu
+                    } else if (p2.phase === 'slide') {
+                        ctx.strokeStyle = '#38bdf8'; // Jasny błękit dla fazy poślizgu i zakrzywienia paraboli
+                    } else {
+                        ctx.strokeStyle = '#10b981'; // Szmaragdowy dla fazy czystego toczenia
+                    }
+                    ctx.lineWidth = 3.5;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+
+                    // Kropka w miejscu odbicia od bandy
+                    if (p2.bounce) {
+                        ctx.beginPath();
+                        ctx.arc(x2, y2, 4.5, 0, Math.PI * 2);
+                        ctx.fillStyle = '#f59e0b';
+                        ctx.fill();
+                    }
+                }
+
+                // Strzałki kierunkowe wzdłuż toru białej bili
+                const pathLen = sim.cuePath.length;
+                const arrowIndices = [
+                    Math.floor(pathLen * 0.25),
+                    Math.floor(pathLen * 0.55),
+                    Math.floor(pathLen * 0.82)
+                ];
+                arrowIndices.forEach(idx => {
+                    if (idx > 1 && idx < pathLen - 1) {
+                        const prev = sim.cuePath[idx - 1];
+                        const curr = sim.cuePath[idx];
+                        const dx = m2pxX(curr.x) - m2pxX(prev.x);
+                        const dy = m2pxY(curr.y) - m2pxY(prev.y);
+                        if (Math.hypot(dx, dy) > 2) {
+                            const angle = Math.atan2(dy, dx);
+                            const color = sim.foul ? '#f43f5e' : (curr.phase === 'slide' ? '#38bdf8' : '#10b981');
+                            drawDirectionArrow(m2pxX(curr.x), m2pxY(curr.y), angle, color);
+                        }
+                    }
+                });
+
+                // Punkt zatrzymania białej bili (Final Stop Ghost)
+                const stopPt = sim.cuePath[sim.cuePath.length - 1];
+                const stopPxX = m2pxX(stopPt.x);
+                const stopPxY = m2pxY(stopPt.y);
+
+                ctx.beginPath();
+                ctx.arc(stopPxX, stopPxY, ballPxR * 0.85, 0, Math.PI * 2);
+                ctx.fillStyle = sim.foul ? 'rgba(244, 63, 94, 0.35)' : 'rgba(16, 185, 129, 0.35)';
+                ctx.fill();
+                ctx.strokeStyle = sim.foul ? '#f43f5e' : '#10b981';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawDirectionArrow(x, y, angle, color) {
+            const headLen = 9;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(headLen * 0.6, 0);
+            ctx.lineTo(-headLen * 0.6, -headLen * 0.55);
+            ctx.lineTo(-headLen * 0.3, 0);
+            ctx.lineTo(-headLen * 0.6, headLen * 0.55);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawPoolBall(px, py, r, color, number, isStripe) {
+            ctx.save();
+            // Cień na suknie
+            ctx.beginPath();
+            ctx.arc(px + 2, py + 3, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fill();
+
+            // Tło bili
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fillStyle = isStripe ? '#f8fafc' : color;
+            ctx.fill();
+
+            if (isStripe) {
+                ctx.save();
+                ctx.clip();
+                ctx.fillStyle = color;
+                ctx.fillRect(px - r, py - r * 0.55, r * 2, r * 1.1);
+                ctx.restore();
+            }
+
+            // Kółko z numerem
+            ctx.beginPath();
+            ctx.arc(px, py, r * 0.48, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.font = `bold ${Math.max(9, Math.round(r * 0.62))}px Inter, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(number), px, py + 0.5);
+
+            // Połysk 3D
+            const shine = ctx.createRadialGradient(px - r * 0.35, py - r * 0.35, r * 0.05, px, py, r);
+            shine.addColorStop(0, 'rgba(255,255,255,0.45)');
+            shine.addColorStop(0.4, 'rgba(255,255,255,0.0)');
+            shine.addColorStop(1, 'rgba(0,0,0,0.25)');
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fillStyle = shine;
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawCueBallOnTable(px, py, r) {
+            ctx.save();
+            // Cień
+            ctx.beginPath();
+            ctx.arc(px + 2, py + 3, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fill();
+
+            // Biała kula z gradientem 3D
+            const grad = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.75, '#e2e8f0');
+            grad.addColorStop(1, '#94a3b8');
+
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Czerwona kropka treningowa (Aramith Pro-Cup Measles)
+            ctx.beginPath();
+            ctx.arc(px + state.shotParams.tipX * r * 0.45, py - state.shotParams.tipY * r * 0.45, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#ef4444';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        /***********************************************************************
+         * 9. ANIMACJA RUCHU BIL W CZASIE RZECZYWISTYM
+         ***********************************************************************/
+        function samplePathAtTime(path, elapsed) {
+            if (!path || path.length === 0) return { x: 0, y: 0 };
+            if (elapsed <= path[0].t) return { x: path[0].x, y: path[0].y };
+            const last = path[path.length - 1];
+            if (elapsed >= last.t) return { x: last.x, y: last.y };
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i];
+                const p2 = path[i + 1];
+                if (elapsed >= p1.t && elapsed <= p2.t) {
+                    const span = (p2.t - p1.t) || 1e-6;
+                    const alpha = (elapsed - p1.t) / span;
+                    return {
+                        x: p1.x + (p2.x - p1.x) * alpha,
+                        y: p1.y + (p2.y - p1.y) * alpha
+                    };
+                }
+            }
+            return { x: last.x, y: last.y };
+        }
+
+        function startRealtimeAnimation() {
+            if (!state.currentSimulatedResult || !state.currentSimulatedResult.cuePath.length) {
+                recalculateCurrentManualShot();
+            }
+            state.animating = true;
+            state.animStartTime = performance.now();
+            document.getElementById('btn-simulate-text').textContent = "Odtwarzanie ruchu bil...";
+            requestAnimationFrame(renderAll);
+        }
+
+        function resetAfterAnimation() {
+            state.animating = false;
+            document.getElementById('btn-simulate-text').textContent = "Symuluj uderzenie (Animacja na żywo)";
+            renderAll();
+        }
+
+        /***********************************************************************
+         * 10. OBSŁUGA INTERAKCJI MYSZY I DOTYKU (STÓŁ + SELEKTOR BIAŁEJ BILI)
+         ***********************************************************************/
+        function setInteractionMode(mode) {
+            state.interactionMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.className = "mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5";
+            });
+            const activeBtn = document.getElementById(`mode-${mode}`);
+            if (activeBtn) {
+                activeBtn.className = "mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow flex items-center gap-1.5 transition";
+            }
+        }
+
+        function getCanvasMouseMeters(evt, canvasEl) {
+            const rect = canvasEl.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            const scaleX = canvasEl.width / rect.width;
+            const scaleY = canvasEl.height / rect.height;
+            const px = (clientX - rect.left) * scaleX;
+            const py = (clientY - rect.top) * scaleY;
+            return {
+                px, py,
+                mx: px2mX(px),
+                my: px2mY(py)
+            };
+        }
+
+        function clampBallToTable(mx, my) {
+            const R = PHYSICS.BALL_R * 1.05;
+            return {
+                x: Math.max(R, Math.min(PHYSICS.TABLE_W - R, mx)),
+                y: Math.max(R, Math.min(PHYSICS.TABLE_H - R, my))
+            };
+        }
+
+        tableCanvas.addEventListener('pointerdown', (e) => {
+            state.animating = false;
+            const pos = getCanvasMouseMeters(e, tableCanvas);
+
+            // 1. Sprawdzenie czy kliknięto w którąś z 6 łuz
+            for (let pk of POCKETS) {
+                if (Math.hypot(pos.mx - pk.x, pos.my - pk.y) < PHYSICS.POCKET_RADIUS * 1.35) {
+                    state.selectedPocketId = pk.id;
+                    runInverseSolver();
+                    return;
+                }
+            }
+
+            const hitRadius = PHYSICS.BALL_R * 1.9;
+
+            // 2. Jeśli aktywny jest konkretny tryb klikania (np. przestawianie białej, obiektowej lub celu)
+            if (state.interactionMode === 'cue') {
+                const c = clampBallToTable(pos.mx, pos.my);
+                state.cueBall.x = c.x; state.cueBall.y = c.y;
+                state.draggingEntity = 'cue';
+                runInverseSolver();
+                return;
+            } else if (state.interactionMode === 'object') {
+                const c = clampBallToTable(pos.mx, pos.my);
+                state.objectBall.x = c.x; state.objectBall.y = c.y;
+                state.draggingEntity = 'object';
+                runInverseSolver();
+                return;
+            } else if (state.interactionMode === 'target') {
+                const c = clampBallToTable(pos.mx, pos.my);
+                state.targetPos.x = c.x; state.targetPos.y = c.y;
+                state.draggingEntity = 'target';
+                runInverseSolver();
+                return;
+            }
+
+            // 3. Tryb swobodnego przeciągania (Drag & Drop)
+            if (Math.hypot(pos.mx - state.cueBall.x, pos.my - state.cueBall.y) < hitRadius) {
+                state.draggingEntity = 'cue';
+            } else if (Math.hypot(pos.mx - state.objectBall.x, pos.my - state.objectBall.y) < hitRadius) {
+                state.draggingEntity = 'object';
+            } else if (Math.hypot(pos.mx - state.targetPos.x, pos.my - state.targetPos.y) < hitRadius * 1.3) {
+                state.draggingEntity = 'target';
+            } else {
+                for (let i = 0; i < state.blockers.length; i++) {
+                    if (Math.hypot(pos.mx - state.blockers[i].x, pos.my - state.blockers[i].y) < hitRadius) {
+                        state.draggingEntity = `blocker-${i}`;
+                        break;
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!state.draggingEntity) return;
+            const pos = getCanvasMouseMeters(e, tableCanvas);
+            const clamped = clampBallToTable(pos.mx, pos.my);
+
+            if (state.draggingEntity === 'cue') {
+                state.cueBall.x = clamped.x;
+                state.cueBall.y = clamped.y;
+            } else if (state.draggingEntity === 'object') {
+                state.objectBall.x = clamped.x;
+                state.objectBall.y = clamped.y;
+            } else if (state.draggingEntity === 'target') {
+                state.targetPos.x = clamped.x;
+                state.targetPos.y = clamped.y;
+            } else if (state.draggingEntity.startsWith('blocker-')) {
+                const idx = parseInt(state.draggingEntity.split('-')[1]);
+                if (state.blockers[idx]) {
+                    state.blockers[idx].x = clamped.x;
+                    state.blockers[idx].y = clamped.y;
+                }
+            }
+
+            // Szybki podgląd podczas przeciągania
+            recalculateCurrentManualShot();
+        });
+
+        window.addEventListener('pointerup', () => {
+            if (state.draggingEntity) {
+                state.draggingEntity = null;
+                // Po puszczeniu bili uruchamiamy pełny Inverse Solver, aby dobrał idealny Tip i siłę
+                runInverseSolver();
+            }
+            isDraggingTip = false;
+        });
+
+        // Interakcja na dużej Białej Bili (Ręczna zmiana punktu uderzenia Tip)
+        let isDraggingTip = false;
+        function updateTipFromPointer(e) {
+            const rect = tipCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const scaleX = tipCanvas.width / rect.width;
+            const scaleY = tipCanvas.height / rect.height;
+            const px = (clientX - rect.left) * scaleX;
+            const py = (clientY - rect.top) * scaleY;
+
+            const cx = tipCanvas.width / 2;
+            const cy = tipCanvas.height / 2;
+            const maxTipRadiusPx = (tipCanvas.width * 0.44) * 0.72;
+
+            let tx = (px - cx) / maxTipRadiusPx;
+            let ty = -(py - cy) / maxTipRadiusPx;
+
+            const mag = Math.hypot(tx, ty);
+            if (mag > 1.0) {
+                tx /= mag;
+                ty /= mag;
+            }
+
+            state.shotParams.tipX = tx;
+            state.shotParams.tipY = ty;
+            state.manualOverride = true;
+            recalculateCurrentManualShot();
+        }
+
+        tipCanvas.addEventListener('pointerdown', (e) => {
+            isDraggingTip = true;
+            updateTipFromPointer(e);
+        });
+        tipCanvas.addEventListener('pointermove', (e) => {
+            if (isDraggingTip) updateTipFromPointer(e);
+        });
+
+        // Suwak siły uderzenia
+        document.getElementById('power-slider').addEventListener('input', (e) => {
+            state.shotParams.power = parseInt(e.target.value, 10);
+            state.manualOverride = true;
+            recalculateCurrentManualShot();
+        });
+
+        /***********************************************************************
+         * 11. DODATKOWE FUNKCJE STOŁU I PRESETY TRENINGOWE
+         ***********************************************************************/
+        function addBlockerBall() {
+            const palette = [
+                { number: 1, color: '#eab308' },
+                { number: 2, color: '#2563eb' },
+                { number: 3, color: '#dc2626' },
+                { number: 4, color: '#7c3aed' },
+                { number: 5, color: '#ea580c' },
+                { number: 6, color: '#16a34a' },
+                { number: 8, color: '#1e293b' }
+            ];
+            const pick = palette[state.blockers.length % palette.length];
+            state.blockers.push({
+                x: 1.27 + (Math.random() - 0.5) * 0.4,
+                y: 0.63 + (Math.random() - 0.5) * 0.3,
+                number: pick.number,
+                color: pick.color
+            });
+            runInverseSolver();
+        }
+
+        function clearBlockers() {
+            state.blockers = [];
+            runInverseSolver();
+        }
+
+        function toggleClothColor() {
+            state.clothTournamentBlue = !state.clothTournamentBlue;
+            renderAll();
+        }
+
+        function loadPreset(presetName) {
+            state.animating = false;
+            state.blockers = [];
+
+            if (presetName === 'oneRail') {
+                // Klasyczne wyjście po 1 bandzie na środek stołu
+                state.cueBall = { x: 0.72, y: 0.88 };
+                state.objectBall = { x: 1.82, y: 0.36, number: 9 };
+                state.selectedPocketId = 2; // Prawa górna
+                state.targetPos = { x: 1.55, y: 0.85 };
+            } else if (presetName === 'drawAngle') {
+                // Wsteczna rotacja (Draw) pod kątem do wyciągnięcia białej bili w dół stołu
+                state.cueBall = { x: 1.15, y: 0.52 };
+                state.objectBall = { x: 1.95, y: 0.32, number: 9 };
+                state.selectedPocketId = 2; // Prawa górna
+                state.targetPos = { x: 1.42, y: 0.96 };
+            } else if (presetName === 'twoRailsSpin') {
+                // Wyjście po 2 bandach z wykorzystaniem rotacji bocznej (Inside/Outside English)
+                state.cueBall = { x: 0.85, y: 0.38 };
+                state.objectBall = { x: 1.92, y: 0.25, number: 9 };
+                state.selectedPocketId = 2; // Prawa górna
+                state.targetPos = { x: 1.75, y: 0.98 };
+            } else if (presetName === 'obstacleAvoid') {
+                // Ominięcie bili przeszkadzającej po wbiciu
+                state.cueBall = { x: 0.68, y: 0.82 };
+                state.objectBall = { x: 1.78, y: 0.38, number: 9 };
+                state.selectedPocketId = 2;
+                state.targetPos = { x: 1.25, y: 0.90 };
+                state.blockers = [
+                    { x: 1.92, y: 0.68, number: 8, color: '#0f172a' }
+                ];
+            }
+
+            runInverseSolver();
+        }
+
+        // Inicjalizacja przy starcie strony
+        window.addEventListener('resize', resizeTableCanvas);
+        window.onload = () => {
+            resizeTableCanvas();
+            loadPreset('oneRail');
+        };
+    </script>
+</body>
+</html>
